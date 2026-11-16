@@ -1,0 +1,15 @@
+{
+  "name": "Radiobox",
+  "short_name": "Radiobox",
+  "description": "A vintage-style internet radio for China, Taiwan, Hong Kong and US stations.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1b1411",
+  "theme_color": "#1b1411",
+  "icons": [
+    { "src": "icons/radio-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/radio-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

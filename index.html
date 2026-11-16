@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Only this page's own files and the pinned player library may run; streams, logos and
+     the station directory are the only things fetched from elsewhere. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; img-src 'self' https: data:; media-src https: http: blob:; connect-src https: http:; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Radiobox</title>
+<!-- Home-screen app (iPhone: Share → Add to Home Screen) -->
+<link rel="manifest" href="radio.webmanifest">
+<link rel="apple-touch-icon" href="icons/radio-180.png">
+<link rel="icon" type="image/png" href="icons/radio-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Radiobox">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1b1411">
+<link rel="stylesheet" href="radio.css">
+</head>
+<body>
+<main class="room">
+  <section class="cabinet" id="radio" aria-label="Radiobox vintage radio">
+    <div class="face">
+
+      <div class="grille" aria-hidden="true">
+        <div class="badge">RADIOBOX</div>
+      </div>
+
+      <div class="dialpanel">
+        <div class="dial-head">
+          <span class="band-name" id="bandName">中国 · CHINA</span>
+          <span class="eye" id="eye" title="Signal strength" aria-hidden="true"></span>
+          <span class="dial-unit">FM · MHz</span>
+        </div>
+
+        <div class="dial" id="dial" aria-hidden="true">
+          <div class="scale" id="scale"></div>
+          <div class="marks" id="marks"></div>
+          <div class="needle" id="needle"></div>
+        </div>
+
+        <div class="plate" aria-live="polite">
+          <span class="freq" id="freq">88.00</span>
+          <span class="plate-text">
+            <span class="station" id="station">—</span>
+            <span class="status" id="status">OFF · 关机</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="ctl">
+          <div class="knob" id="volKnob" role="slider" tabindex="0"
+               aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="70"><i></i></div>
+          <label>VOLUME 音量</label>
+        </div>
+
+        <div class="ctl mid">
+          <div class="keys" role="group" aria-label="Band">
+            <button class="key" data-band="CN">中国</button>
+            <button class="key" data-band="TW">台灣</button>
+            <button class="key" data-band="HK">香港</button>
+            <button class="key" data-band="US">USA</button>
+          </div>
+          <div class="keys small">
+            <button class="key" id="seekDown" aria-label="Seek previous station">◀ SEEK</button>
+            <button class="key power" id="power" aria-pressed="false">POWER</button>
+            <button class="key" id="seekUp" aria-label="Seek next station">SEEK ▶</button>
+          </div>
+        </div>
+
+        <div class="ctl">
+          <div class="knob big" id="tuneKnob" role="slider" tabindex="0"
+               aria-label="Tuning" aria-valuemin="87" aria-valuemax="109" aria-valuenow="88"><i></i></div>
+          <label>TUNING 调谐</label>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="skins" role="radiogroup" aria-label="Cabinet look">
+    <span>CABINET · 外观</span>
+    <button class="skin" role="radio" data-skin="walnut"><i></i>Walnut 1940s</button>
+    <button class="skin" role="radio" data-skin="mint"><i></i>Mint 1950s</button>
+    <button class="skin" role="radio" data-skin="hifi"><i></i>Hi-Fi 1970s</button>
+    <button class="skin" role="radio" data-skin="night"><i></i>Night Drive</button>
+  </div>
+
+  <section class="info" aria-live="polite">
+    <img id="infoLogo" alt="" hidden referrerpolicy="no-referrer">
+    <div class="info-main">
+      <div class="info-label">PROGRAMME · 节目信息</div>
+      <div class="info-title muted" id="infoTitle"></div>
+      <dl id="infoMeta"></dl>
+    </div>
+  </section>
+
+  <details class="log">
+    <summary>Station log · 电台表 <span id="logCount"></span></summary>
+    <ol id="logList"></ol>
+  </details>
+
+  <p class="hint">
+    Turn the tuning knob (drag, scroll, or <kbd>←</kbd> <kbd>→</kbd>) · <kbd>↑</kbd> <kbd>↓</kbd> volume ·
+    <kbd>[</kbd> <kbd>]</kbd> seek · <kbd>1</kbd>–<kbd>4</kbd> band · <kbd>Space</kbd> power.<br>
+    Stations come live from the community Radio Browser directory. Dial positions are for fun, not real broadcast frequencies.
+  </p>
+</main>
+
+<audio id="audio" preload="none"></audio>
+<!-- hls.js is only needed for .m3u8 streams in browsers without native HLS; the radio still works without it -->
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"
+        integrity="sha256-SEBU6M0D0/bReB+39AK9wxjYpMUn+TOpXGJOJ8yalHA=" crossorigin="anonymous"></script>
+<script src="radio.js"></script>
+</body>
+</html>
