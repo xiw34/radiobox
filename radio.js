@@ -16,6 +16,7 @@ const BANDS = {
   TW: { label: '台灣 · TAIWAN' },
   HK: { label: '香港 · HONG KONG' },
   US: { label: '美国 · USA' },
+  SG: { label: '新加坡 · SINGAPORE' },
 };
 const SKINS = ['walnut', 'mint', 'hifi', 'night'];
 const ICY_REFRESH_MS = 30000; // how often to re-read the live programme title
@@ -665,6 +666,7 @@ document.addEventListener('keydown', (e) => {
     case '2': setBand('TW'); break;
     case '3': setBand('HK'); break;
     case '4': setBand('US'); break;
+    case '5': setBand('SG'); break;
     case ' ':
       if (onButton) return;            // let Space activate the focused button
       setPower(!power);
