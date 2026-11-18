@@ -47,6 +47,7 @@
             <span class="station" id="station">—</span>
             <span class="status" id="status">OFF · 关机</span>
           </span>
+          <button class="star-btn plate-star" id="favBtn" aria-pressed="false" aria-label="Add to favourites" disabled>☆</button>
         </div>
       </div>
 
@@ -81,6 +82,16 @@
     </div>
   </section>
 
+  <section class="favs" aria-label="Favourites">
+    <div class="favs-head">
+      <span class="info-label">FAVOURITES · 收藏 <span id="favCount"></span></span>
+      <span class="favs-note">Car ⏮ ⏭ buttons play these in order · 车载按钮按此顺序切换</span>
+    </div>
+    <p class="favs-empty" id="favEmpty">Tap ☆ beside a station name to add it. With no favourites, the car buttons step through the current band. ·
+      点电台名旁的 ☆ 收藏。没有收藏时，车载按钮在当前地区内切换。</p>
+    <ol class="fav-list" id="favList"></ol>
+  </section>
+
   <div class="skins" role="radiogroup" aria-label="Cabinet look">
     <span>CABINET · 外观</span>
     <button class="skin" role="radio" data-skin="walnut"><i></i>Walnut 1940s</button>
@@ -105,7 +116,7 @@
 
   <p class="hint">
     Turn the tuning knob (drag, scroll, or <kbd>←</kbd> <kbd>→</kbd>) · <kbd>↑</kbd> <kbd>↓</kbd> volume ·
-    <kbd>[</kbd> <kbd>]</kbd> seek · <kbd>1</kbd>–<kbd>5</kbd> band · <kbd>Space</kbd> power.<br>
+    <kbd>[</kbd> <kbd>]</kbd> seek · <kbd>1</kbd>–<kbd>5</kbd> band · <kbd>F</kbd> favourite · <kbd>Space</kbd> power.<br>
     Stations come live from the community Radio Browser directory. Dial positions are for fun, not real broadcast frequencies.
   </p>
 </main>

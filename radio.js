@@ -12,11 +12,11 @@ const API_HOSTS = [
   'all.api.radio-browser.info',
 ];
 const BANDS = {
-  CN: { label: '中国 · CHINA' },
-  TW: { label: '台灣 · TAIWAN' },
-  HK: { label: '香港 · HONG KONG' },
-  US: { label: '美国 · USA' },
-  SG: { label: '新加坡 · SINGAPORE' },
+  CN: { label: '中国 · CHINA', short: '中国' },
+  TW: { label: '台灣 · TAIWAN', short: '台灣' },
+  HK: { label: '香港 · HONG KONG', short: '香港' },
+  US: { label: '美国 · USA', short: 'USA' },
+  SG: { label: '新加坡 · SINGAPORE', short: '新加坡' },
 };
 const SKINS = ['walnut', 'mint', 'hifi', 'night'];
 const ICY_REFRESH_MS = 30000; // how often to re-read the live programme title
@@ -35,6 +35,8 @@ const STALL_MS = 12000;      // give up on a stream that hasn't started by then
 const DEG_PER_MHZ = 36;      // tuning-knob rotation per MHz
 const STATIC_LEVEL = 0.22;   // loudness of between-station hiss
 const STORE_KEY = 'radioboxState';
+const FAV_KEY = 'radioboxFavs';  // favourites: [{id, band, name, url, …}] in play order
+const FAV_FIELDS = ['id', 'name', 'url', 'hls', 'tags', 'language', 'place', 'codec', 'bitrate', 'homepage', 'logo'];
 
 // ---------- state ----------
 let power = false;
@@ -54,6 +56,9 @@ let tuneTimer = 0;
 let stallTimer = 0;
 let hls = null;
 let apiHost = null;
+let lastFavId = null;        // favourite most recently tuned, so skipping continues from it even if it failed
+let tuneNow = false;         // true while handling a car / lock-screen button: start audio immediately
+let favs = [];
 const bandCache = {};
 
 // ---------- DOM ----------
@@ -87,6 +92,18 @@ function loadState() {
 }
 function saveState() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify({ band, freq, volume, skin })); } catch (e) {}
+}
+function loadFavs() {
+  try {
+    const a = JSON.parse(localStorage.getItem(FAV_KEY) || '[]');
+    if (Array.isArray(a)) {
+      favs = a.filter((f) => f && typeof f.id === 'string' && BANDS[f.band] &&
+        typeof f.name === 'string' && typeof f.url === 'string' && /^https?:\/\//i.test(f.url));
+    }
+  } catch (e) { favs = []; }
+}
+function saveFavs() {
+  try { localStorage.setItem(FAV_KEY, JSON.stringify(favs)); } catch (e) {}
 }
 
 // ---------- station directory ----------
@@ -142,6 +159,16 @@ async function fetchBand(cc) {
     });
     if (picked.length >= MAX_STATIONS) break;
   }
+  // Favourites of this band always get a dial slot, replacing the least popular stations if needed.
+  const missing = favs.filter((f) => f.band === cc && !picked.some((p) => p.id === f.id));
+  const favIds = new Set(favs.map((f) => f.id));
+  while (missing.length && picked.length + missing.length > MAX_STATIONS) {
+    let k = picked.length - 1;
+    while (k >= 0 && favIds.has(picked[k].id)) k--;
+    if (k < 0) break;
+    picked.splice(k, 1);
+  }
+  for (const f of missing) picked.push(stationFromFav(f));
   // Stable, popularity-independent order so a station tends to keep its dial position.
   picked.sort((a, b) => (a.id < b.id ? -1 : 1));
   picked.forEach((s, i) => { s.freq = SLOT_START + i * SLOT_STEP; });
@@ -149,13 +176,34 @@ async function fetchBand(cc) {
   return picked;
 }
 
+function showBand() {
+  document.querySelectorAll('.key[data-band]').forEach((b) => b.classList.toggle('active', b.dataset.band === band));
+  $('bandName').textContent = BANDS[band].label;
+}
+
+/** Switch band synchronously when its station list is already loaded (needed for car buttons,
+ *  where audio must start inside the button handler). Returns false if the list isn't loaded. */
+function switchBandNow(cc) {
+  if (cc === band && stations.length) return true;
+  const list = bandCache[cc];
+  if (!list) return false;
+  stopStream();
+  band = cc;
+  stations = list;
+  bandLoading = false;
+  showBand();
+  renderMarks();
+  applyTuning();
+  saveState();
+  return true;
+}
+
 async function setBand(cc) {
   band = cc;
   stopStream();
   stations = [];
   bandLoading = true;
-  document.querySelectorAll('.key[data-band]').forEach((b) => b.classList.toggle('active', b.dataset.band === cc));
-  $('bandName').textContent = BANDS[cc].label;
+  showBand();
   renderMarks();
   applyTuning();
   saveState();
@@ -213,7 +261,10 @@ function renderMarks() {
     span.textContent = s.name;
     btn.append(b, span);
     btn.addEventListener('click', () => { if (!power) setPower(true); setFreq(s.freq); });
-    li.append(btn);
+    const star = document.createElement('button');
+    star.className = 'star-btn';
+    star.addEventListener('click', () => toggleFav(s));
+    li.append(btn, star);
     logList.append(li);
   }
   $('logCount').textContent = stations.length ? `(${stations.length})` : '';
@@ -224,11 +275,25 @@ function refreshMarks() {
   const mark = (el) => {
     const s = stations.find((x) => x.id === el.dataset.id);
     if (!s) return;
+    const fav = favIndex(s.id) >= 0;
     el.classList.toggle('dead', s.dead);
     el.classList.toggle('current', power && current === s);
+    el.classList.toggle('fav', fav);
+    const star = el.querySelector('.star-btn');
+    if (star) {
+      star.textContent = fav ? '★' : '☆';
+      star.setAttribute('aria-pressed', String(fav));
+      star.setAttribute('aria-label', (fav ? 'Remove from favourites: ' : 'Add to favourites: ') + s.name);
+    }
   };
   marksEl.querySelectorAll('.mark').forEach(mark);
   logList.querySelectorAll('li').forEach(mark);
+  favList.querySelectorAll('li').forEach((li) => {
+    const f = favs[favIndex(li.dataset.id)];
+    const st = f && stationFor(f);
+    li.classList.toggle('current', !!(power && current && current.id === li.dataset.id));
+    li.classList.toggle('dead', !!(st && st.dead));
+  });
 }
 
 function setStatus(name, status) {
@@ -301,7 +366,8 @@ function applyTuning() {
       if (current !== s) {
         stopStream();
         current = s;
-        tuneTimer = setTimeout(() => startStream(s), TUNE_DELAY);
+        if (tuneNow) startStream(s);                // car button: play() must run inside the handler
+        else tuneTimer = setTimeout(() => startStream(s), TUNE_DELAY);
       }
       setStatus(s.name, playing ? 'ON AIR · 播放中' : 'TUNING · 调谐中…');
     } else {
@@ -319,16 +385,30 @@ function applyTuning() {
     staticGain.gain.setTargetAtTime(target, actx.currentTime, 0.05);
   }
   eye.style.setProperty('--gap', (150 - 140 * heard) + 'deg');
+  if ('mediaSession' in navigator) {
+    try { navigator.mediaSession.playbackState = power ? 'playing' : 'paused'; } catch (e) {}
+  }
   refreshMarks();
   renderInfo();
+}
+
+/** The station the needle is close enough to receive, if any. */
+function tunedStation() {
+  if (!stations.length) return null;
+  const { s, d } = nearest(freq, false);
+  return d <= LOCK ? s : null;
 }
 
 // ---------- programme info ----------
 /** Fill the programme card for the station under the needle (cheap no-op when nothing changed). */
 function renderInfo() {
-  const near = power && stations.length ? nearest(freq, false) : null;
-  const s = near && near.d <= LOCK ? near.s : null;
-  const key = [s ? s.id : '', nowTitle, playing, s && s.dead, power].join('|');
+  const s = power ? tunedStation() : null;
+  const fi = s ? favIndex(s.id) : -1;
+  favBtn.disabled = !s;
+  favBtn.textContent = fi >= 0 ? '★' : '☆';
+  favBtn.setAttribute('aria-pressed', String(fi >= 0));
+  favBtn.setAttribute('aria-label', fi >= 0 ? 'Remove from favourites' : 'Add to favourites');
+  const key = [s ? s.id : '', nowTitle, playing, s && s.dead, power, fi, favs.length].join('|');
   if (key === infoKey) return;
   infoKey = key;
   updateMediaSession();
@@ -561,21 +641,143 @@ function updateMediaSession() {
   if (!('mediaSession' in navigator) || !window.MediaMetadata) return;
   const s = current;
   if (!s) { navigator.mediaSession.metadata = null; return; }
+  const fi = favIndex(s.id);
   navigator.mediaSession.metadata = new MediaMetadata({
     title: nowTitle || s.name,
-    artist: nowTitle ? s.name : BANDS[band].label,
+    artist: (nowTitle ? s.name : BANDS[band].label) + (fi >= 0 ? ` · ★ ${fi + 1}/${favs.length}` : ''),
     album: 'Radiobox',
     artwork: [{ src: s.logo || APP_ICON }],
   });
 }
 if ('mediaSession' in navigator) {
   const on = (action, fn) => { try { navigator.mediaSession.setActionHandler(action, fn); } catch (e) {} };
-  on('play', () => setPower(true));
+  on('play', () => { tuneNow = true; try { setPower(true); } finally { tuneNow = false; } });
   on('pause', () => setPower(false));
   on('stop', () => setPower(false));
-  on('nexttrack', () => seek(1));
-  on('previoustrack', () => seek(-1));
+  // CarPlay and the lock screen show either skip-track or ±10 s buttons depending on the
+  // device; for a live radio both mean "change station".
+  on('nexttrack', () => remoteSkip(1));
+  on('previoustrack', () => remoteSkip(-1));
+  on('seekforward', () => remoteSkip(1));
+  on('seekbackward', () => remoteSkip(-1));
+  on('seekto', null);
 }
+
+// ---------- favourites ----------
+const favList = $('favList');
+const favBtn = $('favBtn');
+const favIndex = (id) => favs.findIndex((f) => f.id === id);
+const stationFor = (f) => (bandCache[f.band] || []).find((s) => s.id === f.id) || null;
+
+function stationFromFav(f) {
+  const s = { dead: false };
+  for (const k of FAV_FIELDS) s[k] = f[k];
+  s.tags = Array.isArray(f.tags) ? f.tags : [];
+  return s;
+}
+
+function toggleFav(s) {
+  if (!s) return;
+  const i = favIndex(s.id);
+  if (i >= 0) {
+    favs.splice(i, 1);
+  } else {
+    const f = { band };
+    for (const k of FAV_FIELDS) f[k] = s[k];
+    favs.push(f);
+  }
+  saveFavs();
+  renderFavs();
+}
+
+function moveFav(i, d) {
+  const j = i + d;
+  if (j < 0 || j >= favs.length) return;
+  [favs[i], favs[j]] = [favs[j], favs[i]];
+  saveFavs();
+  renderFavs();
+}
+
+function renderFavs() {
+  favList.textContent = '';
+  $('favCount').textContent = favs.length ? `(${favs.length})` : '';
+  $('favEmpty').hidden = favs.length > 0;
+  favs.forEach((f, i) => {
+    const li = document.createElement('li');
+    li.dataset.id = f.id;
+    const play = document.createElement('button');
+    play.className = 'fav-play';
+    const n = document.createElement('b');
+    n.textContent = String(i + 1);
+    const name = document.createElement('span');
+    name.textContent = f.name;
+    const tag = document.createElement('small');
+    tag.textContent = BANDS[f.band].short;
+    play.append(n, name, tag);
+    play.addEventListener('click', () => playFav(f, false));
+    const tool = (label, text, fn, disabled) => {
+      const b = document.createElement('button');
+      b.className = 'fav-tool';
+      b.textContent = text;
+      b.setAttribute('aria-label', label + ': ' + f.name);
+      b.disabled = !!disabled;
+      b.addEventListener('click', fn);
+      return b;
+    };
+    li.append(
+      play,
+      tool('Move up', '▲', () => moveFav(i, -1), i === 0),
+      tool('Move down', '▼', () => moveFav(i, 1), i === favs.length - 1),
+      tool('Remove', '✕', () => toggleFav(f)),
+    );
+    favList.append(li);
+  });
+  infoKey = null;
+  refreshMarks();
+  renderInfo();
+}
+
+/** Tune to a favourite, switching band if needed. instant = called from a car / lock-screen button. */
+async function playFav(f, instant) {
+  if (!switchBandNow(f.band)) {
+    await setBand(f.band);
+    if (band !== f.band) return;
+  }
+  const st = stations.find((s) => s.id === f.id);
+  if (!st) return;
+  lastFavId = f.id;
+  tuneNow = instant;
+  try {
+    if (!power) {
+      setFreq(st.freq);
+      setPower(true);
+    } else {
+      if (instant && current === st && !playing) stopStream();   // restart a stalled tune right now
+      setFreq(st.freq);
+    }
+  } finally {
+    tuneNow = false;
+  }
+}
+
+/** Car / lock-screen skip: cycle favourites when there are any, otherwise the current band. */
+function remoteSkip(dir) {
+  if (!favs.length) {
+    tuneNow = true;
+    try { seek(dir); } finally { tuneNow = false; }
+    return;
+  }
+  let i = favIndex(current ? current.id : lastFavId);
+  for (let k = 0; k < favs.length; k++) {
+    i = i < 0 ? (dir > 0 ? 0 : favs.length - 1) : (i + dir + favs.length) % favs.length;
+    const st = stationFor(favs[i]);
+    if (st && st.dead) continue;
+    playFav(favs[i], true);
+    return;
+  }
+}
+
+favBtn.addEventListener('click', () => toggleFav(power ? tunedStation() : null));
 
 // ---------- cabinet look ----------
 function setSkin(name) {
@@ -667,6 +869,7 @@ document.addEventListener('keydown', (e) => {
     case '3': setBand('HK'); break;
     case '4': setBand('US'); break;
     case '5': setBand('SG'); break;
+    case 'f': case 'F': toggleFav(power ? tunedStation() : null); break;
     case ' ':
       if (onButton) return;            // let Space activate the focused button
       setPower(!power);
@@ -678,6 +881,10 @@ document.addEventListener('keydown', (e) => {
 
 // ---------- boot ----------
 loadState();
+loadFavs();
 setSkin(skin);
 renderScale();
+renderFavs();
 setBand(band);       // pre-load the station list so the dial is populated before power-on
+// Pre-load every band that holds a favourite, so car buttons can jump between regions instantly.
+for (const cc of new Set(favs.map((f) => f.band))) if (cc !== band) fetchBand(cc).catch(() => {});
