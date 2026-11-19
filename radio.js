@@ -17,6 +17,8 @@ const BANDS = {
   HK: { label: '香港 · HONG KONG', short: '香港' },
   US: { label: '美国 · USA', short: 'USA' },
   SG: { label: '新加坡 · SINGAPORE', short: '新加坡' },
+  // Not a country: Chinese-language stations from everywhere except the regions above that have their own band.
+  ZH: { label: '华语 · WORLDWIDE', short: '华语', langs: ['chinese', 'mandarin', 'cantonese'], exclude: ['CN', 'TW', 'HK'] },
 };
 const SKINS = ['walnut', 'mint', 'hifi', 'night'];
 const ICY_REFRESH_MS = 30000; // how often to re-read the live programme title
@@ -39,6 +41,7 @@ const FAV_KEY = 'radioboxFavs';  // favourites: [{id, band, name, url, …}] in 
 const FAV_FIELDS = ['id', 'name', 'url', 'hls', 'tags', 'language', 'place', 'codec', 'bitrate', 'homepage', 'logo'];
 
 // ---------- state ----------
+let mode = 'radio';          // 'radio' or 'tape' (LibriVox tape deck, see tape.js)
 let power = false;
 let band = 'CN';
 let freq = 88.0;
@@ -127,9 +130,21 @@ async function apiGet(path) {
 
 async function fetchBand(cc) {
   if (bandCache[cc]) return bandCache[cc];
-  const raw = await apiGet(
-    `/json/stations/search?countrycode=${cc}&hidebroken=true&order=clickcount&reverse=true&limit=${FETCH_LIMIT}`
-  );
+  const spec = BANDS[cc];
+  let raw;
+  if (spec.langs) {
+    const lists = await Promise.all(spec.langs.map((l) => apiGet(
+      `/json/stations/search?language=${encodeURIComponent(l)}&hidebroken=true&order=clickcount&reverse=true&limit=${FETCH_LIMIT * 2}`
+    ).catch(() => [])));
+    const byId = new Map();
+    for (const s of lists.flat()) if (!spec.exclude.includes(s.countrycode)) byId.set(s.stationuuid, s);
+    raw = [...byId.values()].sort((a, b) => b.clickcount - a.clickcount);
+    if (!raw.length) throw new Error('no stations');
+  } else {
+    raw = await apiGet(
+      `/json/stations/search?countrycode=${cc}&hidebroken=true&order=clickcount&reverse=true&limit=${FETCH_LIMIT}`
+    );
+  }
   const secureOnly = location.protocol === 'https:';   // http streams are blocked on https pages
   const seenUrl = new Set();
   const seenName = new Set();
@@ -352,6 +367,11 @@ function applyTuning() {
   tuneKnob.setAttribute('aria-valuenow', freq.toFixed(2));
   volKnob.style.setProperty('--rot', (-135 + 270 * volume) + 'deg');
   volKnob.setAttribute('aria-valuenow', Math.round(volume * 100));
+  if (mode === 'tape') {
+    if (staticGain) staticGain.gain.setTargetAtTime(0, actx.currentTime, 0.05);
+    renderTape();
+    return;
+  }
 
   let signal = 0;
   if (!power) {
@@ -402,6 +422,7 @@ function tunedStation() {
 // ---------- programme info ----------
 /** Fill the programme card for the station under the needle (cheap no-op when nothing changed). */
 function renderInfo() {
+  if (mode === 'tape') { renderTapeInfo(); return; }
   const s = power ? tunedStation() : null;
   const fi = s ? favIndex(s.id) : -1;
   favBtn.disabled = !s;
@@ -627,6 +648,10 @@ function setPower(on) {
   power = on;
   radio.classList.toggle('on', on);
   powerBtn.setAttribute('aria-pressed', String(on));
+  if (mode === 'tape') {
+    if (on) tapePlay(); else tapePause();
+    return;
+  }
   if (on) {
     ensureStatic();
     if (!stations.length && !bandLoading) setBand(band);
@@ -638,7 +663,7 @@ function setPower(on) {
 
 // ---------- lock screen / headphone controls ----------
 function updateMediaSession() {
-  if (!('mediaSession' in navigator) || !window.MediaMetadata) return;
+  if (!('mediaSession' in navigator) || !window.MediaMetadata || mode === 'tape') return;
   const s = current;
   if (!s) { navigator.mediaSession.metadata = null; return; }
   const fi = favIndex(s.id);
@@ -651,16 +676,20 @@ function updateMediaSession() {
 }
 if ('mediaSession' in navigator) {
   const on = (action, fn) => { try { navigator.mediaSession.setActionHandler(action, fn); } catch (e) {} };
-  on('play', () => { tuneNow = true; try { setPower(true); } finally { tuneNow = false; } });
-  on('pause', () => setPower(false));
-  on('stop', () => setPower(false));
-  // CarPlay and the lock screen show either skip-track or ±10 s buttons depending on the
-  // device; for a live radio both mean "change station".
-  on('nexttrack', () => remoteSkip(1));
-  on('previoustrack', () => remoteSkip(-1));
-  on('seekforward', () => remoteSkip(1));
-  on('seekbackward', () => remoteSkip(-1));
-  on('seekto', null);
+  // Radio: CarPlay and the lock screen show either skip-track or ±10 s buttons depending on
+  // the device; for a live radio both mean "change station". Tape: real skips and chapters.
+  const tapeMode = () => mode === 'tape';
+  on('play', () => {
+    if (tapeMode()) return tapePlay();
+    tuneNow = true; try { setPower(true); } finally { tuneNow = false; }
+  });
+  on('pause', () => (tapeMode() ? tapePause() : setPower(false)));
+  on('stop', () => (tapeMode() ? tapePause() : setPower(false)));
+  on('nexttrack', () => (tapeMode() ? tapeChapter(1) : remoteSkip(1)));
+  on('previoustrack', () => (tapeMode() ? tapeChapter(-1) : remoteSkip(-1)));
+  on('seekforward', (d) => (tapeMode() ? tapeSkip((d && d.seekOffset) || TAPE_SKIP_S) : remoteSkip(1)));
+  on('seekbackward', (d) => (tapeMode() ? tapeSkip(-((d && d.seekOffset) || TAPE_SKIP_S)) : remoteSkip(-1)));
+  on('seekto', (d) => { if (tapeMode() && d && typeof d.seekTime === 'number') tapeSeekTo(d.seekTime); });
 }
 
 // ---------- favourites ----------
@@ -828,7 +857,9 @@ function setVolume(v) {
   saveState();
 }
 
-makeKnob(tuneKnob, (deg) => setFreq(freq + deg / DEG_PER_MHZ), snap);
+makeKnob(tuneKnob,
+  (deg) => (mode === 'tape' ? tapeScrub(deg) : setFreq(freq + deg / DEG_PER_MHZ)),
+  () => { if (mode === 'radio') snap(); });
 makeKnob(volKnob, (deg) => setVolume(volume + deg / 270));
 
 // Drag or click directly on the dial glass.
@@ -850,13 +881,17 @@ dial.addEventListener('pointercancel', dialEnd);
 powerBtn.addEventListener('click', () => setPower(!power));
 $('seekUp').addEventListener('click', () => seek(1));
 $('seekDown').addEventListener('click', () => seek(-1));
-document.querySelectorAll('.key[data-band]').forEach((b) => {
-  b.addEventListener('click', () => { if (b.dataset.band !== band || !stations.length) setBand(b.dataset.band); });
-});
+function pickBand(cc) {
+  if (mode === 'tape') setMode('radio');
+  if (cc !== band || !stations.length) setBand(cc);
+}
+document.querySelectorAll('.key[data-band]').forEach((b) => b.addEventListener('click', () => pickBand(b.dataset.band)));
 
 document.addEventListener('keydown', (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.target instanceof HTMLInputElement) return;   // typing in the library search box
   const onButton = e.target instanceof HTMLButtonElement || e.target.tagName === 'SUMMARY';
+  if (mode === 'tape' && tapeKey(e, onButton)) { e.preventDefault(); return; }
   switch (e.key) {
     case 'ArrowRight': setFreq(freq + (e.shiftKey ? SLOT_STEP : 0.05)); break;
     case 'ArrowLeft':  setFreq(freq - (e.shiftKey ? SLOT_STEP : 0.05)); break;
@@ -864,11 +899,13 @@ document.addEventListener('keydown', (e) => {
     case 'ArrowDown':  setVolume(volume - 0.05); break;
     case ']': seek(1); break;
     case '[': seek(-1); break;
-    case '1': setBand('CN'); break;
-    case '2': setBand('TW'); break;
-    case '3': setBand('HK'); break;
-    case '4': setBand('US'); break;
-    case '5': setBand('SG'); break;
+    case '1': pickBand('CN'); break;
+    case '2': pickBand('TW'); break;
+    case '3': pickBand('HK'); break;
+    case '4': pickBand('US'); break;
+    case '5': pickBand('SG'); break;
+    case '6': pickBand('ZH'); break;
+    case 't': case 'T': setMode(mode === 'tape' ? 'radio' : 'tape'); break;
     case 'f': case 'F': toggleFav(power ? tunedStation() : null); break;
     case ' ':
       if (onButton) return;            // let Space activate the focused button

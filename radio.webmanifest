@@ -1,7 +1,7 @@
 {
   "name": "Radiobox",
   "short_name": "Radiobox",
-  "description": "A vintage-style internet radio for China, Taiwan, Hong Kong and US stations.",
+  "description": "A vintage-style internet radio and audiobook tape deck.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

@@ -32,13 +32,25 @@
         <div class="dial-head">
           <span class="band-name" id="bandName">中国 · CHINA</span>
           <span class="eye" id="eye" title="Signal strength" aria-hidden="true"></span>
-          <span class="dial-unit">FM · MHz</span>
+          <span class="dial-unit" id="dialUnit">FM · MHz</span>
         </div>
 
         <div class="dial" id="dial" aria-hidden="true">
           <div class="scale" id="scale"></div>
           <div class="marks" id="marks"></div>
           <div class="needle" id="needle"></div>
+        </div>
+
+        <div class="deck" aria-hidden="true">
+          <div class="cassette">
+            <div class="cas-label" id="casLabel">LibriVox</div>
+            <div class="cas-window">
+              <span class="reel" id="reelL"></span>
+              <span class="cas-tape"></span>
+              <span class="reel" id="reelR"></span>
+            </div>
+          </div>
+          <div class="tape-progress"><i id="tapeBar"></i></div>
         </div>
 
         <div class="plate" aria-live="polite">
@@ -65,11 +77,21 @@
             <button class="key" data-band="HK">香港</button>
             <button class="key" data-band="US">USA</button>
             <button class="key" data-band="SG">新加坡</button>
+            <button class="key" data-band="ZH" title="Chinese-language stations worldwide">华语</button>
+          </div>
+          <div class="keys transport" role="group" aria-label="Tape transport">
+            <button class="key" id="tapePrev" aria-label="Previous chapter">⏮</button>
+            <button class="key" id="tapeBack" aria-label="Back 10 seconds">−10</button>
+            <button class="key play" id="tapePlayBtn" aria-label="Play">▶</button>
+            <button class="key" id="tapeFwd" aria-label="Forward 10 seconds">+10</button>
+            <button class="key" id="tapeNext" aria-label="Next chapter">⏭</button>
           </div>
           <div class="keys small">
             <button class="key" id="seekDown" aria-label="Seek previous station">◀ SEEK</button>
             <button class="key power" id="power" aria-pressed="false">POWER</button>
             <button class="key" id="seekUp" aria-label="Seek next station">SEEK ▶</button>
+            <button class="key" id="speedBtn" aria-label="Playback speed">1×</button>
+            <button class="key" id="modeBtn" aria-label="Switch to tape deck">📼 TAPE</button>
           </div>
         </div>
 
@@ -79,6 +101,28 @@
           <label>TUNING 调谐</label>
         </div>
       </div>
+    </div>
+  </section>
+
+  <section class="library" aria-label="Tape library">
+    <div class="favs-head">
+      <span class="info-label">TAPE LIBRARY · 有声书书库</span>
+      <span class="favs-note">Free public-domain audiobooks from LibriVox · 公版有声书</span>
+    </div>
+    <div class="lib-tabs" role="tablist">
+      <button class="lib-tab" role="tab" data-tab="resume">Continue · 继续听</button>
+      <button class="lib-tab" role="tab" data-tab="zh">中文</button>
+      <button class="lib-tab" role="tab" data-tab="en">English</button>
+    </div>
+    <div class="lib-search" id="libSearchRow" hidden>
+      <input id="libSearch" type="search" placeholder="Search title or author…" enterkeyhint="search" autocomplete="off" maxlength="80" aria-label="Search English audiobooks">
+      <button class="fav-tool" id="libGo">Go</button>
+    </div>
+    <p class="favs-empty" id="libMsg"></p>
+    <ol class="book-list" id="bookList"></ol>
+    <div class="chapters" id="chapterBox" hidden>
+      <div class="favs-head"><span class="info-label" id="chapterHead">CHAPTERS · 章节</span></div>
+      <ol class="fav-list" id="chapterList"></ol>
     </div>
   </section>
 
@@ -116,15 +160,19 @@
 
   <p class="hint">
     Turn the tuning knob (drag, scroll, or <kbd>←</kbd> <kbd>→</kbd>) · <kbd>↑</kbd> <kbd>↓</kbd> volume ·
-    <kbd>[</kbd> <kbd>]</kbd> seek · <kbd>1</kbd>–<kbd>5</kbd> band · <kbd>F</kbd> favourite · <kbd>Space</kbd> power.<br>
+    <kbd>[</kbd> <kbd>]</kbd> seek · <kbd>1</kbd>–<kbd>6</kbd> band · <kbd>F</kbd> favourite · <kbd>T</kbd> tape deck · <kbd>Space</kbd> power.<br>
+    Tape deck: <kbd>←</kbd> <kbd>→</kbd> ±10 s · <kbd>[</kbd> <kbd>]</kbd> chapter · <kbd>Space</kbd> play/pause.<br>
     Stations come live from the community Radio Browser directory. Dial positions are for fun, not real broadcast frequencies.
+    Audiobooks are public-domain LibriVox recordings hosted by the Internet Archive.
   </p>
 </main>
 
 <audio id="audio" preload="none"></audio>
+<audio id="tapeAudio" preload="metadata"></audio>
 <!-- hls.js is only needed for .m3u8 streams in browsers without native HLS; the radio still works without it -->
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"
         integrity="sha256-SEBU6M0D0/bReB+39AK9wxjYpMUn+TOpXGJOJ8yalHA=" crossorigin="anonymous"></script>
 <script src="radio.js"></script>
+<script src="tape.js"></script>
 </body>
 </html>
