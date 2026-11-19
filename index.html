@@ -17,7 +17,8 @@
 <meta name="apple-mobile-web-app-title" content="Radiobox">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#1b1411">
-<link rel="stylesheet" href="radio.css">
+<!-- ?v= forces Safari to fetch fresh copies after an update; bump it on every release -->
+<link rel="stylesheet" href="radio.css?v=7">
 </head>
 <body>
 <main class="room">
@@ -172,7 +173,7 @@
 <!-- hls.js is only needed for .m3u8 streams in browsers without native HLS; the radio still works without it -->
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"
         integrity="sha256-SEBU6M0D0/bReB+39AK9wxjYpMUn+TOpXGJOJ8yalHA=" crossorigin="anonymous"></script>
-<script src="radio.js"></script>
-<script src="tape.js"></script>
+<script src="radio.js?v=7"></script>
+<script src="tape.js?v=7"></script>
 </body>
 </html>
